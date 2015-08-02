@@ -245,6 +245,12 @@ var
   i,preCount,tries: Integer;
   failTimer: TTimeMarker;
 begin
+  if (not tabBackPack.isItemInSlot(1)) or (tabBackPack.count < 2) then
+  begin
+    writeLn('Ran out of either Cosmic Runes or Items, Terminating');
+    terminateScript;
+  end;
+
   case random(100) of
     1..75:
     begin
@@ -276,17 +282,20 @@ begin
   end;
 
   typesend(players[currentPlayer].strings[0],false);
-  tabBackPack.mouseSlot(enchantPattern[i],MOUSE_MOVE);
   wait(gaussRangeInt(800,1500));
 
   for i:= (low(enchantPattern)) to high(enchantPattern) do
   begin
+    if not isLoggedIn() then
+      exit;
+
     preCount := getItemAmount(tabBackPack.getSlotBox(1));
     tries := 0
     repeat
       failTimer.start;
       if tabBackPack.isItemInSlot(enchantPattern[i]) then
       begin
+        sDebug('Item Detected in Slot : ' +toStr(enchantPattern[i]));
         tabBackPack.mouseSlot(enchantPattern[i],MOUSE_MOVE);
         wait(gaussRangeInt(100,200));
         fastClick(MOUSE_LEFT);
@@ -304,16 +313,25 @@ begin
 
       repeat
         wait(gaussRangeInt(50,100));
-      until (failTimer.getTime > 7000) or not (preCount = getItemAmount(tabBackPack.getSlotBox(1)));
+      until (failTimer.getTime > 7000) or (not (preCount = getItemAmount(tabBackPack.getSlotBox(1)))) or (chatBox.findText(['unes to cast this spell']));
 
       wait(gaussRangeInt(200,350));
       if not (preCount = getItemAmount(tabBackPack.getSlotBox(1))) then
       begin
+        sDebug('Enchant Attempt Succesful in Slot : ' +toStr(enchantPattern[i]));
         inc(CastsDone);
         antiban();
         break;
       end else
+      begin
+        sDebug('Enchant Attempt Failed in Slot : ' +toStr(enchantPattern[i]));
         inc(tries);
+      end;
+    if chatBox.findText(['unes to cast this spell']) then
+    begin
+      writeLn('Ran out of Cosmic Runes, Terminating');
+      terminateScript;
+    end;
     until (tries > 2);
     progressReport();
   end;
@@ -416,5 +434,5 @@ begin
   repeat
     mouseSpeed := randomRange(28,35);
     enchantLoop();
-  until (CastsDone >= players[currentPlayer].integers[3]);
+  until (CastsDone >= players[currentPlayer].integers[3]) or (chatbox.findText(['unes to cast this spell']));
 end.
