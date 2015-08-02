@@ -37,7 +37,7 @@ begin
     scriptHelpThread := 'https://villavu.com/forum/showthread.php?t=114154';
 
     editBoxLabels := ['Preferred World','Play time Till Break','Break Duration','Number to do','Antiban Chance'];
-    editBoxDefaults := ['0','60','10','5000','2400'];
+    editBoxDefaults := ['0','60','10','5000','25'];
     editBoxHints := [
     'Pick a world or 0 for random or -1 for "Play Now"',
     'Amount of time in minutes till a break is called',
