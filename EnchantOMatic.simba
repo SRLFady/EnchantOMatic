@@ -16,7 +16,7 @@ program FadyEnchantOMatic;
 
 const
 
-Local_Version := 1.0;
+Local_Version := 1.1;
 
 {*Custom Bank data*}
   CustomBankCol := 4147053;
@@ -195,6 +195,7 @@ begin
     begin
       fastClick(MOUSE_LEFT);
       result := bankScreen.isOpen(gaussRangeInt(2000,4000));
+      break;
     end;
   end;
 end;
