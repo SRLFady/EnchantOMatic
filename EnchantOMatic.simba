@@ -1,0 +1,420 @@
+program FadyEnchantOMatic;
+{$DEFINE SMART}
+{$I SRL-6/SRL.Simba}
+{$i SRL-6/LIB/MISC/SRLPLAYERFORM.simba}
+
+{*
+               JUST PRESS PLAY AND FILL OUT THE FORM
+               JUST PRESS PLAY AND FILL OUT THE FORM
+               JUST PRESS PLAY AND FILL OUT THE FORM
+               JUST PRESS PLAY AND FILL OUT THE FORM
+               JUST PRESS PLAY AND FILL OUT THE FORM
+               JUST PRESS PLAY AND FILL OUT THE FORM
+               JUST PRESS PLAY AND FILL OUT THE FORM
+               JUST PRESS PLAY AND FILL OUT THE FORM
+                                                                     *}
+
+const
+
+Local_Version := 1.0;
+
+{*Custom Bank data*}
+  CustomBankCol := 4147053;
+  CustomBankTol := 11;
+  CustomBankHue := 0.27;
+  CustomBankSat := 0.28;
+
+var
+  CastsDone, B, BreakTime, Antibans: integer;
+  XpPerCast: Extended;
+  ScriptTimer: TTimeMarker;
+
+procedure initPlayerForm();
+begin
+  with playerForm do
+  begin
+    name := 'Enchant-O-Matic';
+    scriptHelpThread := 'https://villavu.com/forum/showthread.php?t=113276';
+
+    editBoxLabels := ['Preferred World','Play time Till Break','Break Duration','Number to do','Antiban Chance'];
+    editBoxDefaults := ['0','60','10','5000','2400'];
+    editBoxHints := [
+    'Pick a world or 0 for random or -1 for "Play Now"',
+    'Amount of time in minutes till a break is called',
+    'How long you want your breaks to be, also in minutes',
+    'How many Items do you want to enchant?',
+    'Antiban chance per cast 0..1000, where 1 is 0.1% and 1000 is 100%'];
+
+    checkBoxLabels := ['Disable SRL Debug?', 'Disable Script Debug?'];
+    checkBoxDefaults := ['True','True'];
+    checkBoxHints := [
+    'Do you want to Disable SRL Debug?',
+    'Do you want to Disable the Script Debug?'];
+
+    comboBoxLabels := ['Actionbar Key','Bank Location','Preset','Enchant Lvl'];
+    comboBoxDefaults := ['1','BANK_NPC_BLUE','BANK_BUTTON_PRESET_1','1'];
+    comboBoxItems := [['1','2','3','4','5','6','7','8','9','0','-','='], ['BANK_NPC_BLUE','BANK_NPC_GREY','BANK_NPC_GREEN','BANK_NPC_DRAYNOR','BANK_BOOTH','BANK_GE','BANK_CHEST_SW','BANK_CHEST_SHANTAY','BANK_CHEST_DUEL','BANK_CHEST_CW','BANK_CHEST_GROTTO','BANK_CHEST_LUMBRIDGE','BANK_TABLE_BURTHORPE','BANK_CHEST_PRIFDDINAS','BANK_CHEST_BARB_OUTPOST','Custom'], ['BANK_BUTTON_PRESET_1','BANK_BUTTON_PRESET_2'], ['1','2','3','4','5','6']];
+    comboBoxHints := [
+    'Where on the Actionbar is the spell placed?',
+    'Pick a bank or the direction of the bank.',
+    'Pick a bank preset to use',
+    'Which Enchanting level are we doing?'];
+
+  end;
+end;
+
+procedure declarePlayers();
+var
+  i: integer;
+begin
+  players.setup(playerForm.players);
+  currentPlayer := 0;
+
+  for i := 0 to high(players) do
+    with players[i] do
+    begin
+      integers[0] := strToInt(playerForm.players[i].settings[0]);
+      integers[1] := strToInt(playerForm.players[i].settings[1]);
+      integers[2] := strToInt(playerForm.players[i].settings[2]);
+      integers[3] := strToInt(playerForm.players[i].settings[3]);
+      integers[4] := strToInt(playerForm.players[i].settings[4]);
+
+      booleans[0] := strToBool(playerForm.players[i].settings[5]);
+      booleans[1] := strToBool(playerForm.players[i].settings[6]);
+
+      strings[0] := playerForm.players[i].settings[7];
+      strings[1] := playerForm.players[i].settings[8];
+      strings[2] := playerForm.players[i].settings[9];
+      strings[3] := playerform.players[i].settings[10];
+
+      world := integers[0];
+    end;
+end;
+
+procedure sDebug(Text: string);
+begin
+  if not players[currentPlayer].booleans[1] then
+    writeLn(Text);
+end;
+
+procedure resetBreakTimer();                //Adapted from The Mayor's VEB Miner
+var
+  ran: Integer;
+begin
+  ran := round((players[currentPlayer].integers[1] * 60000) * 0.1);
+  BreakTime := (getSystemTime() + (players[currentPlayer].integers[1] * 60000) + randomRange(-ran, ran));
+end;
+
+procedure progressReport();
+begin
+  clearDebug();
+  writeLn('Items Enchanted: ' + toStr(CastsDone)+ ', Enchanted/H: ' +toStr(round(CastsDone/(ScriptTimer.getTime()/3600000))));
+  writeLn('XP Gained: ' +toStr(CastsDone*XpPerCast)+ ', XP/H: '+toStr(round((CastsDone*XpPerCast)/(ScriptTimer.getTime()/3600000))));
+  writeLn('Antibans Done: ' + toStr(Antibans));
+  writeLn('Time Running: ' +timeRunning);
+  writeLn('Breaks Taken: ' +toStr(B));
+end;
+
+procedure whichLvl();
+begin
+  case players[currentPlayer].strings[3] of
+    '1' : XpPerCast := 17.5;
+    '2' : XpPerCast := 37;
+    '3' : XpPerCast := 59;
+    '4' : XpPerCast := 67;
+    '5' : XpPerCast := 78;
+    '6' : XpPerCast := 97;
+  end;
+end;
+
+procedure loginProcedure();
+begin
+  if not isLoggedin() then
+  begin
+    players[currentPlayer].login();   // Log them in
+    wait(gaussRangeInt(1000,1500));
+  end;
+  closePollWindow();
+  exitTreasure();            // Exit treasure hunter
+  minimap.clickCompass();
+  mainscreen.setAngle(MS_ANGLE_HIGH);
+end;
+
+function antiBan(): Boolean;
+begin
+  if (random(1000) <= players[currentPlayer].integers[4]) then
+  begin
+    sDebug('Doing Antiban');
+    inc(Antibans);
+    result:= true;
+    case random(39) of
+      1, 2:
+        hoverSkill(SKILL_MAGIC);
+      3..22:
+        pickUpMouse();
+      23..28:
+        sleepAndMoveMouse(randomRange(500, 3000));
+      29..36:
+        wait(RandomRange(777, 5000));
+      37:
+        smallRandomMouse();
+      38:
+      begin
+        writeLn('Starting mini break.');
+        wait(RandomRange(9001, 25000));
+        writeLn('Finished mini break.');
+      end;
+    end;
+  end;
+end;
+
+function customBanker(): Boolean;
+var
+  x, y, i: integer;
+  ATPA: T2DPointArray;
+  TPA: TPointArray;
+begin
+  if bankScreen.isOpen() then
+    exit(True);
+
+  findColorsSpiralTolerance(x, y, TPA, CustomBankCol, mainScreen.getBounds(), CustomBankTol, colorSetting(2,CustomBankHue,CustomBankSat));
+
+  if (Length(TPA) < 1) then
+    exit(false);
+
+  ATPA := TPA.toATPA(25, 25);
+  ATPA.sortFromMidPoint(mainScreen.playerBox.getRandomPoint);
+
+  FilterTPAsBetween(ATPA,1,110);
+
+  for i := 0 to high(ATPA) do
+  begin
+    mouse(ATPA[i].getBounds().getRandomPoint());
+    wait(gaussRangeInt(80,150));
+    if isMouseOverText(['hest','anker','ank','booth']) then
+    begin
+      fastClick(MOUSE_LEFT);
+      result := bankScreen.isOpen(gaussRangeInt(2000,4000));
+    end;
+  end;
+end;
+
+procedure compactBanker();     //Inspired by TrollCrank's banker in ProteanPlankParade
+var                                  //Opens the specified bank, and withdraws the determined preset
+  bankTry,Att: integer;
+begin
+  if not isLoggedIn() then
+    exit;
+  repeat                    //Tries to open the bank again 9 times
+    if not (players[currentPlayer].strings[1] = 'Custom') then
+    begin
+      if bankScreen.open(getGlobal(players[currentPlayer].strings[1])) then
+        break;
+    end else
+      if customBanker then
+        break;
+    inc(bankTry);
+    sDebug('Failed attempt number '+ intToStr(bankTry) +' at opening bank');
+  until (bankTry > 9);  //Change this if you want it to do more than 10 attempts
+  if (bankTry>9) then
+  begin
+    writeLn('Failed to open Bank 10 times. Terminating Script');
+    terminateScript();
+  end;
+  sDebug('Successfully opened the bank!');
+  wait(gaussRangeInt(100,300));
+  repeat                                                        //Tries to click the preset button again twice
+    bankScreen.clickButton(getGlobal(players[currentPlayer].strings[2]));
+    if tabBackpack.waitWhileLocked(gaussRangeInt(2000, 4000)) then
+      break;
+    inc(Att);
+    sDebug('Failed attempt number '+ intToStr(Att) +' at opening bank');
+  until (not tabBackpack.isLocked()) or (Att >= 3);
+  if tabBackpack.isLocked() then
+  begin                                                       //If the backpack hasnt been unlocked yet, will terminate
+    WriteLn('Could not exit bank, terminating script');
+    terminateScript();
+  end;
+  sDebug('Preset Loaded Successfully');
+  wait(gaussRangeInt(100,400));
+end;
+
+procedure enchant();
+var
+  enchantPattern: TIntegerArray;
+  i,preCount,tries: Integer;
+  failTimer: TTimeMarker;
+begin
+  case random(100) of
+    1..75:
+    begin
+      enchantPattern := DROP_PATTERN_SNAKE;
+      enchantPattern.deleteIndex(0);
+    end;
+    76..80:
+    begin
+      enchantPattern := DROP_PATTERN_UP_DOWN;
+      enchantPattern.deleteIndex(0);
+    end;
+    81..90:
+    begin
+      enchantPattern := DROP_PATTERN_REGULAR;
+      enchantPattern.deleteIndex(0);
+    end;
+    91..97:
+    begin
+      enchantPattern := DROP_PATTERN_SNAKE;
+      enchantPattern.deleteIndex(0);
+      enchantPattern.invert();
+    end;
+    98..100:
+    begin
+      enchantPattern := DROP_PATTERN_UP_DOWN;
+      enchantPattern.deleteIndex(0);
+      enchantPattern.invert();
+    end;
+  end;
+
+  typesend(players[currentPlayer].strings[0],false);
+  tabBackPack.mouseSlot(enchantPattern[i],MOUSE_MOVE);
+  wait(gaussRangeInt(800,1500));
+
+  for i:= (low(enchantPattern)) to high(enchantPattern) do
+  begin
+    preCount := getItemAmount(tabBackPack.getSlotBox(1));
+    tries := 0
+    repeat
+      failTimer.start;
+      if tabBackPack.isItemInSlot(enchantPattern[i]) then
+      begin
+        tabBackPack.mouseSlot(enchantPattern[i],MOUSE_MOVE);
+        wait(gaussRangeInt(100,200));
+        fastClick(MOUSE_LEFT);
+      end else
+        break;
+
+      if not (i = high(enchantPattern)) then
+      begin
+        wait(gaussRangeInt(100,600));
+        typesend(players[currentPlayer].strings[0],false);
+        wait(gaussRangeInt(100,200));
+        if tabBackPack.isItemInSlot(enchantPattern[i+1]) then
+          tabBackPack.mouseSlot(enchantPattern[i+1],MOUSE_MOVE);
+      end;
+
+      repeat
+        wait(gaussRangeInt(50,100));
+      until (failTimer.getTime > 7000) or not (preCount = getItemAmount(tabBackPack.getSlotBox(1)));
+
+      wait(gaussRangeInt(200,350));
+      if not (preCount = getItemAmount(tabBackPack.getSlotBox(1))) then
+      begin
+        inc(CastsDone);
+        antiban();
+        break;
+      end else
+        inc(tries);
+    until (tries > 2);
+    progressReport();
+  end;
+end;
+
+procedure takeBreak();                   //Adapted from The Mayor's VEB Miner
+var
+  H, M, S, breakFor, timeLeft, ran: Integer;
+  breakDuration: TTimeMarker;
+begin
+  if (getSystemTime() >= BreakTime) then
+  begin
+    writeLn('Taking a Break');
+
+    if random(2) = 0 then
+      players[currentPlayer].logout()
+    else
+      players[currentPlayer].exitToLobby();
+
+    ran := round((players[currentPlayer].integers[2] * 60000) * 0.1);
+
+    breakFor := (players[currentPlayer].integers[2] * 60000) + randomRange(ran, -ran);
+    convertTime(breakFor, H, M, S);
+    writeLn('Taking a Break for: ' + toStr(H)+ 'h ' + toStr(M)+ 'm ' + toStr(S)+ 's');
+
+    breakDuration.start();
+
+    repeat
+      timeLeft := breakFor - breakDuration.getTime();
+      convertTime(timeLeft, H, M, S);
+      writeLn('Resuming in: ' + toStr(H)+ 'h ' + toStr(M)+ 'm ' + toStr(S)+ 's');
+      wait(25000 + random(4000));
+    until breakFor < breakDuration.getTime();
+
+    inc(B);
+    loginProcedure();
+    resetBreakTimer();
+  end;
+end;
+
+procedure autoUpdateMe();
+var
+  newFile: integer;
+  newScript, newFilePath: string;
+  online_Version: extended;
+begin
+  sDebug('Checking for updates');
+  online_Version := strToFloat(getPage('http://static.frement.net/proxy.php?u=https://raw.githubusercontent.com/SRLFady/EnchantOMatic/master/VERSION.txt'));
+  sDebug('Local Version ' + toStr(Local_Version) + ', Online Version: ' + toStr(online_Version)+'.');
+
+  if online_Version > Local_Version then
+  begin
+    writeLn('Downloading the latest script version from GitHub');
+    newScript := getPage('http://static.frement.net/proxy.php?u=https://raw.githubusercontent.com/SRLFady/EnchantOMatic/master/EnchantOMatic.simba');
+    newFilePath := scriptPath+ 'Fady Enchant-O-Matic V' + toStr(online_Version) +'.simba';
+    newFile := rewriteFile(newFilePath, true);
+
+    if not writeFileString(newFile, newScript) then
+    begin
+      writeLn('Could not write to ' + newFilePath);
+      terminatescript();
+    end;
+
+    closeFile(newFile);
+    writeLn('Latest script downloaded to ' + newFilePath);
+    writeLn('Please use the new one to run the latest version!');
+    terminateScript();
+  end else
+    sDebug('Local version is already up to date!');
+end;
+
+procedure enchantLoop();
+begin
+  if not isLoggedIn() then
+    loginProcedure();
+
+  CompactBanker();
+  enchant();
+  takeBreak();
+  progressReport();
+end;
+
+begin
+  clearDebug();
+  initPlayerForm();
+  runPlayerForm();
+  if (not playerForm.isScriptReady) then
+    exit;
+  declarePlayers();
+  //autoUpdateMe();
+  smartShowConsole := false;
+  smartEnableDrawing := true;
+  disableSRLDebug := players[currentPlayer].booleans[0];
+  setupSRL();
+
+  loginProcedure();
+  resetBreakTimer();
+  whichLvl();
+  ScriptTimer.start();
+  repeat
+    mouseSpeed := randomRange(28,35);
+    enchantLoop();
+  until (CastsDone >= players[currentPlayer].integers[3]);
+end.
